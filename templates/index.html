@@ -512,9 +512,14 @@
 
         const data = await response.json();
         removeTyping();
-        const reply = data.text || "Sorry, I could not get a response.";
-        appendMessage("assistant", reply);
-        conversationHistory.push({ role: "assistant", content: reply });
+        if (data.error) {
+          appendMessage("assistant", "Error: " + data.error);
+          conversationHistory.pop();
+        } else {
+          const reply = data.text || "Sorry, I could not get a response.";
+          appendMessage("assistant", reply);
+          conversationHistory.push({ role: "assistant", content: reply });
+        }
       } catch {
         removeTyping();
         appendMessage("assistant", "Sorry, something went wrong. Please try again.");

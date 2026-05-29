@@ -7,7 +7,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 app = Flask(__name__)
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+
+
+def get_client():
+    key = os.getenv("GROQ_API_KEY")
+    if not key:
+        raise RuntimeError("GROQ_API_KEY environment variable is not set")
+    return Groq(api_key=key)
 
 SYSTEM_PROMPT = """You are an assistant for a digital printing service. Use ONLY the following facts to answer user questions:
 
@@ -57,17 +63,20 @@ def index():
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    data = request.get_json()
-    messages = data.get("messages", [])
-
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n{current_time_context()}"}
-        ] + messages,
-    )
-    reply = completion.choices[0].message.content
-    return jsonify({"text": reply})
+    try:
+        data = request.get_json()
+        messages = data.get("messages", [])
+        client = get_client()
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[
+                {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n{current_time_context()}"}
+            ] + messages,
+        )
+        reply = completion.choices[0].message.content
+        return jsonify({"text": reply})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
