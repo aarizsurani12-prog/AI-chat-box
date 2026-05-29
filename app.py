@@ -61,6 +61,12 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/health")
+def health():
+    key = os.getenv("GROQ_API_KEY")
+    return jsonify({"status": "ok", "key_set": bool(key)})
+
+
 @app.route("/chat", methods=["POST"])
 def chat():
     try:

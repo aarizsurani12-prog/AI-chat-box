@@ -510,16 +510,24 @@
           body: JSON.stringify({ messages: conversationHistory }),
         });
 
-        const data = await response.json();
+        const raw = await response.text();
         removeTyping();
-        if (data.error) {
-          appendMessage("assistant", "Error: " + data.error);
+        let reply;
+        try {
+          const data = JSON.parse(raw);
+          if (data.error) {
+            appendMessage("assistant", "⚠️ " + data.error);
+            conversationHistory.pop();
+            return;
+          }
+          reply = data.text || "No response received.";
+        } catch {
+          appendMessage("assistant", "⚠️ Server error (" + response.status + "): " + raw.slice(0, 200));
           conversationHistory.pop();
-        } else {
-          const reply = data.text || "Sorry, I could not get a response.";
-          appendMessage("assistant", reply);
-          conversationHistory.push({ role: "assistant", content: reply });
+          return;
         }
+        appendMessage("assistant", reply);
+        conversationHistory.push({ role: "assistant", content: reply });
       } catch {
         removeTyping();
         appendMessage("assistant", "Sorry, something went wrong. Please try again.");
