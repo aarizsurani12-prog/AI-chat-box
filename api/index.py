@@ -1,8 +1,13 @@
-import json
 import os
 from datetime import datetime, timezone, timedelta
-from http.server import BaseHTTPRequestHandler
+from flask import Flask, request, jsonify, send_file
 import google.generativeai as genai
+from dotenv import load_dotenv
+
+load_dotenv()
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+app = Flask(__name__)
 
 SYSTEM_PROMPT = """You are an assistant for a digital printing service. Use ONLY the following facts to answer user questions:
 
@@ -53,40 +58,25 @@ def to_gemini_messages(messages):
     return result
 
 
-class handler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        try:
-            key = os.getenv("GOOGLE_API_KEY")
-            if not key:
-                self._respond(500, {"error": "GOOGLE_API_KEY not set"})
-                return
+@app.route("/")
+def index():
+    return send_file(os.path.join(ROOT, "index.html"))
 
-            length = int(self.headers.get("Content-Length", 0))
-            body = json.loads(self.rfile.read(length))
-            messages = body.get("messages", [])
 
-            genai.configure(api_key=key)
-            model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
-                system_instruction=f"{SYSTEM_PROMPT}\n\n{current_time_context()}",
-            )
-            response = model.generate_content(contents=to_gemini_messages(messages))
-            self._respond(200, {"text": response.text})
-        except Exception as e:
-            self._respond(500, {"error": str(e)})
-
-    def do_GET(self):
+@app.route("/api/index", methods=["POST"])
+def chat():
+    try:
         key = os.getenv("GOOGLE_API_KEY")
-        self._respond(200, {"status": "ok", "key_set": bool(key)})
-
-    def _respond(self, status, data):
-        body = json.dumps(data).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.end_headers()
-        self.wfile.write(body)
-
-    def log_message(self, format, *args):
-        pass
+        if not key:
+            return jsonify({"error": "GOOGLE_API_KEY not set"}), 500
+        data = request.get_json()
+        messages = data.get("messages", [])
+        genai.configure(api_key=key)
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction=f"{SYSTEM_PROMPT}\n\n{current_time_context()}",
+        )
+        response = model.generate_content(contents=to_gemini_messages(messages))
+        return jsonify({"text": response.text})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
