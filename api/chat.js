@@ -49,17 +49,16 @@ function getCurrentTimeIST() {
 
 function askGemini(apiKey, messages) {
   return new Promise((resolve, reject) => {
-    const contents = messages.map((m) => ({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    }));
+    const contents = [
+      { role: "user", parts: [{ text: `${SYSTEM_PROMPT}\n\n${getCurrentTimeIST()}\n\nAcknowledge briefly that you understand.` }] },
+      { role: "model", parts: [{ text: "Understood. I'll only answer questions about First Step Printing Press Daman." }] },
+      ...messages.map((m) => ({
+        role: m.role === "assistant" ? "model" : "user",
+        parts: [{ text: m.content }],
+      })),
+    ];
 
-    const payload = JSON.stringify({
-      system_instruction: {
-        parts: [{ text: `${SYSTEM_PROMPT}\n\n${getCurrentTimeIST()}` }],
-      },
-      contents,
-    });
+    const payload = JSON.stringify({ contents });
 
     const options = {
       hostname: "generativelanguage.googleapis.com",
