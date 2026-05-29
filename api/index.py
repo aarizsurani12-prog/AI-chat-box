@@ -1,14 +1,12 @@
 import os
 from datetime import datetime, timezone, timedelta
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, request, jsonify
 from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Resolve templates folder relative to this file
-template_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
-app = Flask(__name__, template_folder=template_dir)
+app = Flask(__name__)
 
 SYSTEM_PROMPT = """You are an assistant for a digital printing service. Use ONLY the following facts to answer user questions:
 
@@ -43,7 +41,7 @@ Important Rules:
 IST = timezone(timedelta(hours=5, minutes=30))
 
 
-def current_time_context() -> str:
+def current_time_context():
     now = datetime.now(IST)
     return (
         f"Current date/time (IST): {now.strftime('%A, %d %B %Y, %I:%M %p')}. "
@@ -51,41 +49,21 @@ def current_time_context() -> str:
     )
 
 
-def get_client():
-    key = os.getenv("GROQ_API_KEY")
-    if not key:
-        raise RuntimeError("GROQ_API_KEY environment variable is not set")
-    return Groq(api_key=key)
-
-
-@app.route("/")
-def index():
-    return render_template("index.html")
-
-
-@app.route("/health")
-def health():
-    key = os.getenv("GROQ_API_KEY")
-    return jsonify({"status": "ok", "key_set": bool(key)})
-
-
-@app.route("/chat", methods=["POST"])
+@app.route("/api/index", methods=["POST"])
 def chat():
     try:
+        key = os.getenv("GROQ_API_KEY")
+        if not key:
+            return jsonify({"error": "GROQ_API_KEY is not set"}), 500
         data = request.get_json()
         messages = data.get("messages", [])
-        client = get_client()
+        client = Groq(api_key=key)
         completion = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
             messages=[
                 {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n{current_time_context()}"}
             ] + messages,
         )
-        reply = completion.choices[0].message.content
-        return jsonify({"text": reply})
+        return jsonify({"text": completion.choices[0].message.content})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-if __name__ == "__main__":
-    app.run(debug=True, port=5001)
