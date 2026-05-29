@@ -62,11 +62,12 @@ function askGemini(apiKey, messages) {
 
     const options = {
       hostname: "generativelanguage.googleapis.com",
-      path: `/v1beta/models/gemini-pro:generateContent?key=${apiKey}`,
+      path: `/v1beta/models/gemini-flash-latest:generateContent`,
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         "Content-Length": Buffer.byteLength(payload),
+        "X-goog-api-key": apiKey,
       },
     };
 
