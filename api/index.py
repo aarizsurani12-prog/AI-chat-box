@@ -2,7 +2,7 @@ import json
 import os
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler
-from groq import Groq
+import google.generativeai as genai
 
 SYSTEM_PROMPT = """You are an assistant for a digital printing service. Use ONLY the following facts to answer user questions:
 
@@ -45,31 +45,39 @@ def current_time_context():
     )
 
 
+def to_gemini_messages(messages):
+    result = []
+    for m in messages:
+        role = "model" if m["role"] == "assistant" else "user"
+        result.append({"role": role, "parts": [{"text": m["content"]}]})
+    return result
+
+
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
+            key = os.getenv("GOOGLE_API_KEY")
+            if not key:
+                self._respond(500, {"error": "GOOGLE_API_KEY not set"})
+                return
+
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length))
             messages = body.get("messages", [])
 
-            key = os.getenv("GROQ_API_KEY")
-            if not key:
-                self._respond(500, {"error": "GROQ_API_KEY not set"})
-                return
-
-            client = Groq(api_key=key)
-            completion = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[
-                    {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n{current_time_context()}"}
-                ] + messages,
+            genai.configure(api_key=key)
+            model = genai.GenerativeModel(
+                model_name="gemini-1.5-flash",
+                system_instruction=f"{SYSTEM_PROMPT}\n\n{current_time_context()}",
             )
-            self._respond(200, {"text": completion.choices[0].message.content})
+            response = model.generate_content(contents=to_gemini_messages(messages))
+            self._respond(200, {"text": response.text})
         except Exception as e:
             self._respond(500, {"error": str(e)})
 
     def do_GET(self):
-        self._respond(200, {"status": "ok", "key_set": bool(os.getenv("GROQ_API_KEY"))})
+        key = os.getenv("GOOGLE_API_KEY")
+        self._respond(200, {"status": "ok", "key_set": bool(key)})
 
     def _respond(self, status, data):
         body = json.dumps(data).encode()

@@ -1,19 +1,12 @@
 import os
 from datetime import datetime, timezone, timedelta
 from flask import Flask, render_template, request, jsonify
-from groq import Groq
+import google.generativeai as genai
 from dotenv import load_dotenv
 
 load_dotenv()
 
 app = Flask(__name__)
-
-
-def get_client():
-    key = os.getenv("GROQ_API_KEY")
-    if not key:
-        raise RuntimeError("GROQ_API_KEY environment variable is not set")
-    return Groq(api_key=key)
 
 SYSTEM_PROMPT = """You are an assistant for a digital printing service. Use ONLY the following facts to answer user questions:
 
@@ -48,7 +41,7 @@ Important Rules:
 IST = timezone(timedelta(hours=5, minutes=30))
 
 
-def current_time_context() -> str:
+def current_time_context():
     now = datetime.now(IST)
     return (
         f"Current date/time (IST): {now.strftime('%A, %d %B %Y, %I:%M %p')}. "
@@ -56,31 +49,34 @@ def current_time_context() -> str:
     )
 
 
+def to_gemini_messages(messages):
+    result = []
+    for m in messages:
+        role = "model" if m["role"] == "assistant" else "user"
+        result.append({"role": role, "parts": [{"text": m["content"]}]})
+    return result
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
 
 
-@app.route("/health")
-def health():
-    key = os.getenv("GROQ_API_KEY")
-    return jsonify({"status": "ok", "key_set": bool(key)})
-
-
 @app.route("/chat", methods=["POST"])
 def chat():
     try:
+        key = os.getenv("GOOGLE_API_KEY")
+        if not key:
+            return jsonify({"error": "GOOGLE_API_KEY not set"}), 500
         data = request.get_json()
         messages = data.get("messages", [])
-        client = get_client()
-        completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n{current_time_context()}"}
-            ] + messages,
+        genai.configure(api_key=key)
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction=f"{SYSTEM_PROMPT}\n\n{current_time_context()}",
         )
-        reply = completion.choices[0].message.content
-        return jsonify({"text": reply})
+        response = model.generate_content(contents=to_gemini_messages(messages))
+        return jsonify({"text": response.text})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
