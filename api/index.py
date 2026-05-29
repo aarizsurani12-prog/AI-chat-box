@@ -58,25 +58,23 @@ def to_gemini_messages(messages):
     return result
 
 
-@app.route("/")
-def index():
+@app.route("/", defaults={"path": ""}, methods=["GET", "POST"])
+@app.route("/<path:path>", methods=["GET", "POST"])
+def catch_all(path):
+    if request.method == "POST":
+        try:
+            key = os.getenv("GOOGLE_API_KEY")
+            if not key:
+                return jsonify({"error": "GOOGLE_API_KEY not set"}), 500
+            data = request.get_json()
+            messages = data.get("messages", [])
+            genai.configure(api_key=key)
+            model = genai.GenerativeModel(
+                model_name="gemini-1.5-flash",
+                system_instruction=f"{SYSTEM_PROMPT}\n\n{current_time_context()}",
+            )
+            response = model.generate_content(contents=to_gemini_messages(messages))
+            return jsonify({"text": response.text})
+        except Exception as e:
+            return jsonify({"error": str(e)}), 500
     return send_file(os.path.join(ROOT, "index.html"))
-
-
-@app.route("/api/index", methods=["POST"])
-def chat():
-    try:
-        key = os.getenv("GOOGLE_API_KEY")
-        if not key:
-            return jsonify({"error": "GOOGLE_API_KEY not set"}), 500
-        data = request.get_json()
-        messages = data.get("messages", [])
-        genai.configure(api_key=key)
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction=f"{SYSTEM_PROMPT}\n\n{current_time_context()}",
-        )
-        response = model.generate_content(contents=to_gemini_messages(messages))
-        return jsonify({"text": response.text})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
