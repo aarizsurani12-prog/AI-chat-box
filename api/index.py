@@ -1,12 +1,8 @@
+import json
 import os
 from datetime import datetime, timezone, timedelta
-from flask import Flask, request, jsonify
+from http.server import BaseHTTPRequestHandler
 from groq import Groq
-from dotenv import load_dotenv
-
-load_dotenv()
-
-app = Flask(__name__)
 
 SYSTEM_PROMPT = """You are an assistant for a digital printing service. Use ONLY the following facts to answer user questions:
 
@@ -49,21 +45,40 @@ def current_time_context():
     )
 
 
-@app.route("/api/index", methods=["POST"])
-def chat():
-    try:
-        key = os.getenv("GROQ_API_KEY")
-        if not key:
-            return jsonify({"error": "GROQ_API_KEY is not set"}), 500
-        data = request.get_json()
-        messages = data.get("messages", [])
-        client = Groq(api_key=key)
-        completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n{current_time_context()}"}
-            ] + messages,
-        )
-        return jsonify({"text": completion.choices[0].message.content})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+            body = json.loads(self.rfile.read(length))
+            messages = body.get("messages", [])
+
+            key = os.getenv("GROQ_API_KEY")
+            if not key:
+                self._respond(500, {"error": "GROQ_API_KEY not set"})
+                return
+
+            client = Groq(api_key=key)
+            completion = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": f"{SYSTEM_PROMPT}\n\n{current_time_context()}"}
+                ] + messages,
+            )
+            self._respond(200, {"text": completion.choices[0].message.content})
+        except Exception as e:
+            self._respond(500, {"error": str(e)})
+
+    def do_GET(self):
+        self._respond(200, {"status": "ok", "key_set": bool(os.getenv("GROQ_API_KEY"))})
+
+    def _respond(self, status, data):
+        body = json.dumps(data).encode()
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format, *args):
+        pass
