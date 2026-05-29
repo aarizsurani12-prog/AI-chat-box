@@ -1,8 +1,8 @@
 import json
 import os
+import urllib.request
 from datetime import datetime, timezone, timedelta
 from http.server import BaseHTTPRequestHandler
-import google.generativeai as genai
 
 SYSTEM_PROMPT = """You are an assistant for a digital printing service. Use ONLY the following facts to answer user questions:
 
@@ -45,12 +45,24 @@ def current_time_context():
     )
 
 
-def to_gemini_messages(messages):
-    result = []
+def ask_gemini(api_key, messages):
+    contents = []
     for m in messages:
         role = "model" if m["role"] == "assistant" else "user"
-        result.append({"role": role, "parts": [{"text": m["content"]}]})
-    return result
+        contents.append({"role": role, "parts": [{"text": m["content"]}]})
+
+    payload = json.dumps({
+        "system_instruction": {
+            "parts": [{"text": f"{SYSTEM_PROMPT}\n\n{current_time_context()}"}]
+        },
+        "contents": contents
+    }).encode()
+
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={api_key}"
+    req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30) as resp:
+        data = json.loads(resp.read())
+    return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
 class handler(BaseHTTPRequestHandler):
@@ -63,13 +75,8 @@ class handler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length", 0))
             body = json.loads(self.rfile.read(length))
             messages = body.get("messages", [])
-            genai.configure(api_key=key)
-            model = genai.GenerativeModel(
-                model_name="gemini-1.5-flash",
-                system_instruction=f"{SYSTEM_PROMPT}\n\n{current_time_context()}",
-            )
-            response = model.generate_content(contents=to_gemini_messages(messages))
-            self._json(200, {"text": response.text})
+            reply = ask_gemini(key, messages)
+            self._json(200, {"text": reply})
         except Exception as e:
             self._json(500, {"error": str(e)})
 
