@@ -2,3 +2,5 @@
 .env.example
 .DS_Store
 requirements.txt
+app.py
+templates/
